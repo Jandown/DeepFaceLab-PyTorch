@@ -272,15 +272,21 @@ def _assign_from_tf_saveable_dict(*, tf_dict: Dict[str, np.ndarray], saveable, s
                     chosen_key = k
                     break
 
-        # 2) Fallback: shape-based greedy match among remaining keys.
+        # 2) Conservative fallback: only accept a UNIQUE shape-compatible key.
+        # Greedy shape-only mapping can silently scramble weights across layers
+        # (many tensors share the same shape), leading to "converted" models that
+        # behave like random initialization.
         if chosen_key is None:
+            compatible = []
             for k in remaining_keys:
                 if k not in remaining_set:
                     continue
-                conv = _try_key(k)
-                if conv is not None:
-                    chosen_key = k
-                    break
+                cand = _try_key(k)
+                if cand is not None:
+                    compatible.append((k, cand))
+
+            if len(compatible) == 1:
+                chosen_key, conv = compatible[0]
 
         if chosen_key is None or conv is None:
             missing.append(tf_sub)
@@ -929,7 +935,13 @@ def _convert_one_model(*, src_dir: Path, dst_dir: Path, model_name: str, model_c
             continue
 
         tf_dict = _read_saveable_dict(src_existing)
-        _assign_from_tf_saveable_dict(tf_dict=tf_dict, saveable=spec.obj, scope=spec.scope)
+        loaded, total, missing = _assign_from_tf_saveable_dict(tf_dict=tf_dict, saveable=spec.obj, scope=spec.scope)
+        if loaded != total:
+            sample = missing[:5]
+            raise RuntimeError(
+                f"Weight mapping incomplete for {model_name}:{spec.scope} ({loaded}/{total}). "
+                f"Missing sample: {sample}. Conversion aborted to avoid writing corrupted checkpoints."
+            )
 
         dst_file = dst_dir / f"{model_name}_{spec.filename}"
         spec.obj.save_weights(dst_file)
