@@ -186,7 +186,7 @@ class DFLJPG(object):
 
         dflchunk = {'name' : 'APP15',
                     'm_h' : 0xEF,
-                    'data' : pickle.dumps(dict_data),
+                    'data' : pickle.dumps(dict_data, protocol=4),
                     'ex_data' : None,
                     }
         self.chunks.insert (last_app_chunk+1, dflchunk)
