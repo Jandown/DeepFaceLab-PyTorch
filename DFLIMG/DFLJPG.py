@@ -169,6 +169,22 @@ class DFLJPG(object):
 
         dict_data = self.dfl_dict
 
+        def _to_pickle_compatible(v):
+            if isinstance(v, np.ndarray):
+                return v.tolist()
+            if isinstance(v, np.generic):
+                return v.item()
+            if isinstance(v, dict):
+                return {k: _to_pickle_compatible(val) for k, val in v.items()}
+            if isinstance(v, (list, tuple)):
+                return [_to_pickle_compatible(x) for x in v]
+            return v
+
+        # Normalize numpy objects to plain Python types before pickling.
+        # This avoids cross-version NumPy module path issues (e.g. numpy._core)
+        # when loading metadata in TF builds with older NumPy.
+        dict_data = _to_pickle_compatible(dict_data)        
+
         # Remove None keys
         for key in list(dict_data.keys()):
             if dict_data[key] is None:
